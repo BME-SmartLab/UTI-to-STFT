@@ -183,8 +183,8 @@ dir_base = "/shared/data_SSI2018/"
 ##### training data
 # - 2 females: spkr048, spkr049
 # - 5 males: spkr010, spkr102, spkr103, spkr104, spkr120
-# speakers = ['spkr048', 'spkr049', 'spkr102', 'spkr103']
-speakers = ['spkr102']
+speakers = ['spkr048', 'spkr049', 'spkr102', 'spkr103']
+# speakers = ['spkr102']
 
 # download necessary WaveGlow sources
 # !wget https://github.com/NVIDIA/waveglow/archive/a7168f398f8e2727291c2d46d0ef35ef30956de4.zip
