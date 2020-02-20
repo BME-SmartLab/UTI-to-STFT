@@ -190,8 +190,8 @@ for speaker in speakers:
     dir_data = dir_base + speaker + "/" + type + "/"
     if os.path.isdir(dir_data):
         for file in sorted(os.listdir(dir_data)):
-            if file.endswith('_ultrasound.mp4'):
-                ult_files_all += [dir_data + file]
+            if file.endswith('_speech_volnorm_cut_ultrasound.mgclsp'):
+                ult_files_all += [dir_data + file[:-37]]
     
     # randomize the order of files
     random.shuffle(ult_files_all)
@@ -216,9 +216,9 @@ for speaker in speakers:
         ultmgc_size[train_valid] = 0
         
         # load all training/validation data
-        for file in ult_files[train_valid]:
+        for basefile in ult_files[train_valid]:
             try:
-                (ult_data, mgc_lsp_coeff, lf0, phone_text) = get_training_data('', file[:-15])
+                (ult_data, mgc_lsp_coeff, lf0, phone_text) = get_training_data('', basefile)
                 
             except ValueError as e:
                 print("wrong psync data, check manually!", e)
@@ -227,7 +227,7 @@ for speaker in speakers:
                 ult_data = ult_data[0:ultmgc_len]
                 mgc_lsp_coeff = mgc_lsp_coeff[0:ultmgc_len]
                 
-                print(file[:-4], ult_data.shape, mgc_lsp_coeff.shape)
+                print(basefile, ult_data.shape, mgc_lsp_coeff.shape)
                 
                 if ultmgc_size[train_valid] + ultmgc_len > n_max_ultrasound_frames:
                     print('data too large', n_max_ultrasound_frames, ultmgc_size[train_valid], ultmgc_len)
