@@ -173,7 +173,7 @@ n_mgc = order + 1
 samplingFrequency = 22050
 n_melspec = 80
 hop_length_UTI = 270 # 12 ms
-stft = TacotronSTFT(filter_length=1024, hop_length=hop_length_UTI, \
+stft = WaveGlow_functions.TacotronSTFT(filter_length=1024, hop_length=hop_length_UTI, \
     win_length=1024, n_mel_channels=n_melspec, sampling_rate=samplingFrequency, \
     mel_fmin=0, mel_fmax=8000)
 
@@ -231,7 +231,7 @@ for speaker in speakers:
                 (ult_data, mgc_lsp_coeff, lf0, phone_text) = get_training_data('', basefile)
                 
                 # load using mel_sample
-                mel_data = get_mel(basefile + '_speech_volnorm_cut_ultrasound.wav', stft)
+                mel_data = WaveGlow_functions.get_mel(basefile + '_speech_volnorm_cut_ultrasound.wav', stft)
                 mel_data = np.fliplr(np.rot90(mel_data.data.numpy(), axes=(1, 0)))
                 
                 
