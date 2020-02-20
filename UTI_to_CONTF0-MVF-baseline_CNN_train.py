@@ -230,7 +230,7 @@ for speaker in speakers:
         # load all training/validation data
         for basefile in ult_files[train_valid]:
             try:
-                (ult_data, mgc_lsp_coeff, lf0, phone_text) = get_training_data('', basefile])
+                (ult_data, mgc_lsp_coeff, lf0, phone_text) = get_training_data('', basefile)
                 (contf0, mvf) = get_contf0_mvf('', basefile)
             except ValueError as e:
                 print("wrong psync data, check manually!", e)
