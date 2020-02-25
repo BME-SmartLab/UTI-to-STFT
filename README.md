@@ -12,4 +12,5 @@ Synthesized samples (Feb 20, 2020) at https://simonyi-my.sharepoint.com/:u:/g/pe
 - Python 3.6.9
 - keras 2.2.4
 - tensorflow-gpu 1.13.1
+- pytorch 1.2.0
 - ...etc...
