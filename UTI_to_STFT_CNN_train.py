@@ -5,11 +5,16 @@ Restructured Feb 4, 2018 - get data
 Restructured Sep 19, 2018 - DNN training
 Restructured Oct 13, 2018 - DNN training
 Restructured Feb 18, 2020 - UTI to STFT
+Restructured March 2, 2020 - improvements by Laszlo Toth <tothl@inf.u-szeged.hu>
+ - swish, scaling to [-1,1], network structure, SGD
+Documentation May 5, 2020 - more comments added
 
 Keras implementation of the UTI-to-STFT model of
-TODO... ,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', 2020.
+Tamas Gabor Csapo, Csaba Zainko, Laszlo Toth, Gabor Gosztolya, Alexandra Marko,
+,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', submitted to Interspeech 2020.
 -> this script is for training the STFT (Mel-Spectrogram) parameters
 '''
+
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,20 +31,23 @@ import scipy
 import pickle
 import random
 random.seed(17)
-
 import skimage
 
 # sample from Csaba
 import WaveGlow_functions
 
+import keras
+from keras import regularizers
+from keras.optimizers import SGD
+from keras.callbacks import ReduceLROnPlateau
+
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten
+from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Activation, InputLayer, Dropout
 from keras.callbacks import EarlyStopping, CSVLogger, ModelCheckpoint
 # additional requirement: SPTK 3.8 or above in PATH
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-
 
 
 # do not use all GPU memory
@@ -50,7 +58,19 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True 
 set_session(tf.Session(config=config))
 
+# defining the swish activation function
+from keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
+class Swish(Activation):
+    
+    def __init__(self, activation, **kwargs):
+        super(Swish, self).__init__(activation, **kwargs)
+        self.__name__ = 'swish'
 
+def swish(x):
+    return (K.sigmoid(x) * x)
+
+get_custom_objects().update({'swish': Swish(swish)})
 
 
 # read_ult reads in *.ult file from AAA
@@ -163,13 +183,13 @@ def get_training_data(dir_file, filename_no_ext, NumVectors = 64, PixPerVector =
         return (ult_data, mgc_lsp_coeff, lf0, phone_text)
 
 
-# Parameters of old vocoder
+# Parameters of old / simple continouos vocoder
 frameLength = 512 # 23 ms at 22050 Hz sampling
 frameShift = 270 # 12 ms at 22050 Hz sampling, correspondong to 81.5 fps (ultrasound)
 order = 24
 n_mgc = order + 1
 
-# STFT parameters
+# WaveGlow / Tacotron2 / STFT parameters
 samplingFrequency = 22050
 n_melspec = 80
 hop_length_UTI = 270 # 12 ms
@@ -213,7 +233,8 @@ for speaker in speakers:
     ult = dict()
     melspec = dict()
     ultmel_size = dict()
-    
+   
+
     # train: first 90% of sentences
     ult_files['train'] = ult_files_all[0:int(0.9*len(ult_files_all))]
     # valid: last 10% of sentences
@@ -233,7 +254,6 @@ for speaker in speakers:
                 # load using mel_sample
                 mel_data = WaveGlow_functions.get_mel(basefile + '_speech_volnorm_cut_ultrasound.wav', stft)
                 mel_data = np.fliplr(np.rot90(mel_data.data.numpy(), axes=(1, 0)))
-                
                 
             except ValueError as e:
                 print("wrong psync data, check manually!", e)
@@ -260,12 +280,14 @@ for speaker in speakers:
         ult[train_valid] = ult[train_valid][0 : ultmel_size[train_valid]]
         melspec[train_valid] = melspec[train_valid][0 : ultmel_size[train_valid]]
 
+        # input: already scaled to [0,1] range
+        # rescale to [-1,1]
+        ult[train_valid] -= 0.5
+        ult[train_valid] *= 2
         # reshape ult for CNN
         ult[train_valid] = np.reshape(ult[train_valid], (-1, n_lines, n_pixels_reduced, 1))
         
-
-    # input: already scaled to [0,1] range
-
+    print(ult['train'].shape)
     # target: normalization to zero mean, unit variance
     # feature by feature
     melspec_scalers = []
@@ -275,20 +297,27 @@ for speaker in speakers:
         melspec['train'][:, i] = melspec_scalers[i].fit_transform(melspec['train'][:, i].reshape(-1, 1)).ravel()
         melspec['valid'][:, i] = melspec_scalers[i].transform(melspec['valid'][:, i].reshape(-1, 1)).ravel()
 
-    ### single training without cross-validation
-    # convolutional model, same as Interspeech2019
-    model = Sequential()
-    model.add(Conv2D(16, (3,3), activation='relu', input_shape=(n_lines, n_pixels_reduced, 1), padding='same'))
-    model.add(MaxPooling2D((3,3), padding='same'))
-    model.add(Conv2D(8, (3,3), activation='relu', padding='same'))
-    model.add(MaxPooling2D((3,3), padding='same'))
+     ### single training without cross-validation
+    # convolutional model, improved version
+    model=Sequential()
+    model.add(InputLayer(input_shape=(n_lines, n_pixels_reduced, 1))) #,X_train.shape[1:]))
+    model.add(Conv2D(filters=30,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(Conv2D(filters=60,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None) ,kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Conv2D(filters=90,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(Conv2D(filters=120,kernel_size=(13,13),strides=(1,1),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(MaxPooling2D(pool_size=(2,2)))
     model.add(Flatten())
-    model.add(Dense(1000, kernel_initializer='normal', activation='relu'))
-    model.add(Dense(1000, kernel_initializer='normal', activation='relu'))
-    model.add(Dense(n_melspec, kernel_initializer='normal', activation='linear'))
-
+    model.add(Dense(1000,activation='swish', kernel_initializer=keras.initializers.he_uniform(seed=None), bias_initializer=keras.initializers.he_uniform(seed=None),kernel_regularizer=regularizers.l1(0.000005)))
+    model.add(Dropout(0.2)) 
+    model.add(Dense(n_melspec,activation='linear'))
     # compile model
-    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.compile(SGD(lr=0.1,  momentum=0.1, nesterov=True),loss='mean_squared_error', metrics=['mean_squared_error'])
+    
 
     print(model.summary())
 
@@ -296,10 +325,13 @@ for speaker in speakers:
     # csv logger
     current_date = '{date:%Y-%m-%d_%H-%M-%S}'.format( date=datetime.datetime.now() )
     print(current_date)
-    model_name = 'models/UTI_to_STFT_CNN_' + speaker + '_' + current_date
-    callbacks = [EarlyStopping(monitor='val_loss', patience=10, verbose=0), \
-                 CSVLogger(model_name + '.csv', append=True, separator=';'), \
-                 ModelCheckpoint(model_name + '_weights_best.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')]
+    model_name = 'models/UTI_to_STFT_CNN-improved_' + speaker + '_' + current_date
+    
+    # callbacks
+    earlystopper = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=3, verbose=1, mode='auto')
+    lrr = ReduceLROnPlateau(monitor='val_mean_squared_error', patience=2, verbose=1, factor=0.5, min_lr=0.0001) 
+    logger = CSVLogger(model_name + '.csv', append=True, separator=';')
+    checkp = ModelCheckpoint(model_name + '_weights_best.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 
     # save model
     model_json = model.to_json()
@@ -313,7 +345,7 @@ for speaker in speakers:
     history = model.fit(ult['train'], melspec['train'],
                             epochs = 100, batch_size = 128, shuffle = True, verbose = 1,
                             validation_data=(ult['valid'], melspec['valid']),
-                            callbacks=callbacks)
+                            callbacks = [earlystopper, lrr, logger, checkp])
     # here the training of the DNN is finished
 
 
