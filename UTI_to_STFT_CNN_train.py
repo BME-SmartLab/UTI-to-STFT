@@ -297,11 +297,14 @@ for speaker in speakers:
         melspec['train'][:, i] = melspec_scalers[i].fit_transform(melspec['train'][:, i].reshape(-1, 1)).ravel()
         melspec['valid'][:, i] = melspec_scalers[i].transform(melspec['valid'][:, i].reshape(-1, 1)).ravel()
 
-     ### single training without cross-validation
+    ### single training without cross-validation
     # convolutional model, improved version
     model=Sequential()
-    model.add(InputLayer(input_shape=(n_lines, n_pixels_reduced, 1))) #,X_train.shape[1:]))
-    model.add(Conv2D(filters=30,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    # https://github.com/keras-team/keras/issues/11683
+    # https://github.com/keras-team/keras/issues/10417
+    model.add(InputLayer(input_shape=ult['train'].shape[1:]))
+    # add input_shape to first hidden layer
+    model.add(Conv2D(filters=30,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001), input_shape=ult['train'].shape[1:]))
     model.add(Dropout(0.2)) 
     model.add(Conv2D(filters=60,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None) ,kernel_regularizer=regularizers.l1(0.00001)))
     model.add(Dropout(0.2)) 
