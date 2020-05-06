@@ -5,9 +5,13 @@ Restructured Feb 4, 2018 - get data
 Restructured Sep 19, 2018 - DNN training
 Restructured Oct 13, 2018 - DNN training
 Restructured Feb 18, 2020 - UTI to STFT
+Restructured March 2, 2020 - improvements by Laszlo Toth <tothl@inf.u-szeged.hu>
+ - swish, ultrasound scaling to [-1,1]
+Documentation May 5, 2020 - more comments added
 
 Keras implementation of the UTI-to-STFT model of
-TODO... ,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', 2020.
+Tamas Gabor Csapo, Csaba Zainko, Laszlo Toth, Gabor Gosztolya, Alexandra Marko,
+,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', submitted to Interspeech 2020.
 -> this script is for predicting the STFT (Mel-Spectrogram) parameters from UTI input,
 -> and for synthesizing speech with the WaveGlow neural vocoder
 '''
@@ -32,6 +36,7 @@ from scipy.signal import savgol_filter
 import WaveGlow_functions
 
 from keras.models import model_from_json
+from keras.layers import Activation
 
 # do not use all GPU memory
 import tensorflow as tf
@@ -42,6 +47,19 @@ config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
 
 
+# defining the swish activation function
+from keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
+class Swish(Activation):
+    
+    def __init__(self, activation, **kwargs):
+        super(Swish, self).__init__(activation, **kwargs)
+        self.__name__ = 'swish'
+
+def swish(x):
+    return (K.sigmoid(x) * x)
+
+get_custom_objects().update({'swish': Swish(swish)})
 
 
 # read_ult reads in *.ult file from AAA
@@ -226,7 +244,7 @@ for speaker in speakers:
             if file.endswith('_speech_volnorm_cut_ultrasound.mgclsp'):
                 ult_files_all += [dir_data + file[:-37]]
     
-    csv_files = glob.glob('models/UTI_to_STFT_CNN_' + speaker + '_*.csv')
+    csv_files = glob.glob('models/UTI_to_STFT_CNN-improved_' + speaker + '_*.csv')
     csv_files = sorted(csv_files)
     melspec_model_name = csv_files[-1][:-4]
     print(csv_files, melspec_model_name)
@@ -260,6 +278,11 @@ for speaker in speakers:
             for i in range(ultmel_len):
                 ult_test[i] = skimage.transform.resize(ult_data[i], (n_lines, n_pixels_reduced), preserve_range=True) / 255
             
+            # input: already scaled to [0,1] range
+            # rescale to [-1,1]
+            ult_test -= 0.5
+            ult_test *= 2
+        
             # for CNN
             ult_test = np.reshape(ult_test, (-1, n_lines, n_pixels_reduced, 1))
             
