@@ -1,11 +1,10 @@
 # UTI-to-STFT
-Keras implementation of ,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', 2020.
+Keras implementation of Tamas Gabor Csapo, Csaba Zainko, Laszlo Toth, Gabor Gosztolya, Alexandra Marko,
+,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', submitted to Interspeech 2020.
 
 For WaveGlow synthesis, download model from https://drive.google.com/file/d/1cjKPHbtAMh_4HTHmuIGNkbOkPBD9qwhj/view?usp=sharing
 
-Pretrained models (Feb 20, 2020) at https://simonyi-my.sharepoint.com/:u:/g/personal/csapszi_sch_bme_hu/EUvj7Y5_g0pJoXzKfgxK08YBYzWEKWW9dXxTJlgSjgRfiA?e=YQsMLQ
-
-Synthesized samples (Feb 20, 2020) at https://simonyi-my.sharepoint.com/:u:/g/personal/csapszi_sch_bme_hu/Eeahg2qcnypJni8Hb1Ci83kBvFonWtl1DkotKca0tCNqAA?e=cGUVFO
+Pretrained models and synthesized samples (May 7, 2020) at https://simonyi-my.sharepoint.com/:f:/g/personal/csapszi_sch_bme_hu/EjBcbCcVUmFCkhh_NiVOZikBB8CsyATBVQA9aaGK-jhh3A?e=vlc50W
 
 **Requirements**
 
@@ -13,4 +12,4 @@ Synthesized samples (Feb 20, 2020) at https://simonyi-my.sharepoint.com/:u:/g/pe
 - keras 2.2.4
 - tensorflow-gpu 1.13.1
 - pytorch 1.2.0
-- ...etc...
+- ...etc... see requirements.txt
