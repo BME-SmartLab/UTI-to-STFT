@@ -6,6 +6,9 @@ Restructured Sep 19, 2018 - DNN training
 Restructured Oct 13, 2018 - DNN training
 Restructured Feb 25, 2019 - CNN training for ContVoc parameters
 Restructured Feb 20, 2020 - comparison with STST
+Restructured March 2, 2020 - improvements by Laszlo Toth <tothl@inf.u-szeged.hu>
+ - swish, scaling to [-1,1], network structure, SGD
+Documentation May 5, 2020 - more comments added
 
 Keras implementation of the UTI-to-ContF0 model of
 Tamás Gábor Csapó, Mohammed Salah Al-Radhi, Géza Németh, Gábor Gosztolya, Tamás Grósz, László Tóth, Alexandra Markó, ,,Ultrasound-based Silent Speech Interface Built on a Continuous Vocoder'', Interspeech 2019, pp. 894-898.   http://arxiv.org/abs/1906.09885
@@ -29,9 +32,13 @@ import random
 random.seed(17)
 import skimage
 
+import keras
+from keras import regularizers
+from keras.optimizers import SGD
+from keras.callbacks import ReduceLROnPlateau
 
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten
+from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Activation, InputLayer, Dropout
 from keras.callbacks import EarlyStopping, CSVLogger, ModelCheckpoint
 
 from sklearn.model_selection import train_test_split
@@ -47,6 +54,20 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True 
 set_session(tf.Session(config=config))
 
+
+# defining the swish activation function
+from keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
+class Swish(Activation):
+    
+    def __init__(self, activation, **kwargs):
+        super(Swish, self).__init__(activation, **kwargs)
+        self.__name__ = 'swish'
+
+def swish(x):
+    return (K.sigmoid(x) * x)
+
+get_custom_objects().update({'swish': Swish(swish)})
 
 
 
@@ -160,7 +181,7 @@ def get_training_data(dir_file, filename_no_ext, NumVectors = 64, PixPerVector =
         return (ult_data, mgc_lsp_coeff, lf0, phone_text)
 
 
-# Parameters of Continuous vocoder
+# Parameters of old / simple continouos vocoder
 frameLength = 512 # 23 ms at 22050 Hz sampling
 frameShift = 270 # 12 ms at 22050 Hz sampling, correspondong to 81.5 fps (ultrasound)
 order = 24
@@ -245,6 +266,10 @@ for speaker in speakers:
         ult[train_valid] = ult[train_valid][0 : ultmgc_size[train_valid]]
         mgc[train_valid] = mgc[train_valid][0 : ultmgc_size[train_valid]]
 
+        # input: already scaled to [0,1] range
+        # rescale to [-1,1]
+        ult[train_valid] -= 0.5
+        ult[train_valid] *= 2
         # reshape ult for CNN
         ult[train_valid] = np.reshape(ult[train_valid], (-1, n_lines, n_pixels_reduced, 1))
         
@@ -261,19 +286,31 @@ for speaker in speakers:
         mgc['valid'][:, i] = mgc_scalers[i].transform(mgc['valid'][:, i].reshape(-1, 1)).ravel()
 
     ### single training without cross-validation
-    # convolutional model, same as Interspeech2019
-    model = Sequential()
-    model.add(Conv2D(16, (3,3), activation='relu', input_shape=(n_lines, n_pixels_reduced, 1), padding='same'))
-    model.add(MaxPooling2D((3,3), padding='same'))
-    model.add(Conv2D(8, (3,3), activation='relu', padding='same'))
-    model.add(MaxPooling2D((3,3), padding='same'))
+    # convolutional model, improved version
+    model=Sequential()
+    # https://github.com/keras-team/keras/issues/11683
+    # https://github.com/keras-team/keras/issues/10417
+    model.add(InputLayer(input_shape=ult['train'].shape[1:]))
+    # add input_shape to first hidden layer
+    model.add(Conv2D(filters=30,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001), input_shape=ult['train'].shape[1:]))
+    model.add(Dropout(0.2)) 
+    model.add(Conv2D(filters=60,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None) ,kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Conv2D(filters=90,kernel_size=(13,13),strides=(2,2),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(Conv2D(filters=120,kernel_size=(13,13),strides=(1,1),activation="swish", padding="same",kernel_initializer=keras.initializers.he_uniform(seed=None), kernel_regularizer=regularizers.l1(0.00001)))
+    model.add(Dropout(0.2)) 
+    model.add(MaxPooling2D(pool_size=(2,2)))
     model.add(Flatten())
-    model.add(Dense(1000, kernel_initializer='normal', activation='relu'))
-    model.add(Dense(1000, kernel_initializer='normal', activation='relu'))
-    model.add(Dense(n_mgc, kernel_initializer='normal', activation='linear'))
+    model.add(Dense(1000,activation='swish', kernel_initializer=keras.initializers.he_uniform(seed=None), bias_initializer=keras.initializers.he_uniform(seed=None),kernel_regularizer=regularizers.l1(0.000005)))
+    model.add(Dropout(0.2)) 
+    model.add(Dense(n_mgc,activation='linear'))
+
 
     # compile model
-    model.compile(loss='mean_squared_error', optimizer='adam')
+    model.compile(SGD(lr=0.1,  momentum=0.1, nesterov=True),loss='mean_squared_error', metrics=['mean_squared_error'])
+
 
     print(model.summary())
 
@@ -281,10 +318,13 @@ for speaker in speakers:
     # csv logger
     current_date = '{date:%Y-%m-%d_%H-%M-%S}'.format( date=datetime.datetime.now() )
     print(current_date)
-    model_name = 'models/UTI_to_MGC-LSP_CNN_' + speaker + '_' + current_date
-    callbacks = [EarlyStopping(monitor='val_loss', patience=10, verbose=0), \
-                 CSVLogger(model_name + '.csv', append=True, separator=';'), \
-                 ModelCheckpoint(model_name + '_weights_best.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')]
+    model_name = 'models/UTI_to_MGC-LSP_CNN-improved_' + speaker + '_' + current_date
+    
+    # callbacks
+    earlystopper = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=3, verbose=1, mode='auto')
+    lrr = ReduceLROnPlateau(monitor='val_mean_squared_error', patience=2, verbose=1, factor=0.5, min_lr=0.0001) 
+    logger = CSVLogger(model_name + '.csv', append=True, separator=';')
+    checkp = ModelCheckpoint(model_name + '_weights_best.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
 
     # save model
     model_json = model.to_json()
@@ -298,7 +338,7 @@ for speaker in speakers:
     history = model.fit(ult['train'], mgc['train'],
                             epochs = 100, batch_size = 128, shuffle = True, verbose = 1,
                             validation_data=(ult['valid'], mgc['valid']),
-                            callbacks=callbacks)
+                            callbacks = [earlystopper, lrr, logger, checkp])
     # here the training of the DNN is finished
 
 

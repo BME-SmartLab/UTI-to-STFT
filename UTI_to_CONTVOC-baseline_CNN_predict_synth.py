@@ -6,6 +6,9 @@ Restructured Sep 19, 2018 - DNN training
 Restructured Oct 13, 2018 - DNN training
 Restructured Feb 25, 2019 - CNN training for ContVoc parameters
 Restructured Feb 20, 2020 - comparison with STST
+Restructured March 2, 2020 - improvements by Laszlo Toth <tothl@inf.u-szeged.hu>
+ - swish, ultrasound scaling to [-1,1]
+Documentation May 5, 2020 - more comments added
 
 Keras implementation of the UTI-to-ContF0 model of
 Tamás Gábor Csapó, Mohammed Salah Al-Radhi, Géza Németh, Gábor Gosztolya, Tamás Grósz, László Tóth, Alexandra Markó, ,,Ultrasound-based Silent Speech Interface Built on a Continuous Vocoder'', Interspeech 2019, pp. 894-898.   http://arxiv.org/abs/1906.09885
@@ -29,6 +32,7 @@ import vocoder_ContF0
 
 
 from keras.models import model_from_json
+from keras.layers import Activation
 
 # do not use all GPU memory
 import tensorflow as tf
@@ -39,6 +43,19 @@ config.gpu_options.allow_growth = True
 set_session(tf.Session(config=config))
 
 
+# defining the swish activation function
+from keras import backend as K
+from keras.utils.generic_utils import get_custom_objects
+class Swish(Activation):
+    
+    def __init__(self, activation, **kwargs):
+        super(Swish, self).__init__(activation, **kwargs)
+        self.__name__ = 'swish'
+
+def swish(x):
+    return (K.sigmoid(x) * x)
+
+get_custom_objects().update({'swish': Swish(swish)})
 
 
 # read_ult reads in *.ult file from AAA
@@ -208,7 +225,7 @@ for speaker in speakers:
                 ult_files_all += [dir_data + file[:-37]]
     
     # mgc network
-    csv_files = sorted(glob.glob('models/UTI_to_MGC-LSP_CNN_' + speaker + '_*.csv'))
+    csv_files = sorted(glob.glob('models/UTI_to_MGC-LSP_CNN-improved_' + speaker + '_*.csv'))
     mgc_model_name = csv_files[-1][:-4]
     print(csv_files, mgc_model_name)
     with open(mgc_model_name + '_model.json', "r") as json_file:
@@ -219,7 +236,7 @@ for speaker in speakers:
     mgc_scalers = pickle.load(open(mgc_model_name + '_mgc_scalers.sav', 'rb'))
     
     # contf0 & mvf network
-    csv_files = sorted(glob.glob('models/UTI_to_CONTF0-MVF_CNN_' + speaker + '_*.csv'))
+    csv_files = sorted(glob.glob('models/UTI_to_CONTF0-MVF_CNN-improved_' + speaker + '_*.csv'))
     contf0_mvf_model_name = csv_files[-1][:-4]
     print(csv_files, contf0_mvf_model_name)
     with open(contf0_mvf_model_name + '_model.json', "r") as json_file:
@@ -254,6 +271,9 @@ for speaker in speakers:
             ult_test = np.reshape(ult_test, (-1, n_lines, n_pixels_reduced, 1))
             
             # input: already scaled to [0,1] range
+            # rescale to [-1,1]
+            ult_test -= 0.5
+            ult_test *= 2
             
             # predict with the trained CNN
             mgc_predicted = mgc_model.predict(ult_test)
