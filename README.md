@@ -1,6 +1,6 @@
 # UTI-to-STFT
 Keras implementation of Tamas Gabor Csapo, Csaba Zainko, Laszlo Toth, Gabor Gosztolya, Alexandra Marko,
-,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', submitted to Interspeech 2020.
+,,Ultrasound-based Articulatory-to-Acosutic Mapping with WaveGlow Speech Synthesis'', accepted at Interspeech 2020, [arXiv:2008.03152](https://arxiv.org/abs/2008.03152)
 
 For WaveGlow synthesis, download model from https://drive.google.com/file/d/1cjKPHbtAMh_4HTHmuIGNkbOkPBD9qwhj/view?usp=sharing
 
